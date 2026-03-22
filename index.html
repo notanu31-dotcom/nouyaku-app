@@ -13,10 +13,21 @@
     h1 { font-size: 22px; margin: 0 0 16px; color: #2f7d32; text-align: center; }
     h2 { font-size: 18px; margin: 0 0 14px; border-left: 4px solid #2f7d32; padding-left: 10px; }
     
-    /* フォーム周りの整理 */
-    .field-group { margin-bottom: 14px; }
+    /* フォーム周りの整理（スマホはみ出し修正込み） */
+    .field-group { margin-bottom: 14px; width: 100%; }
     label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; color: #555; }
-    input, select { width: 100%; padding: 12px; border: 1px solid #cfd8dc; border-radius: 10px; background: #fff; font-size: 16px; transition: border-color 0.2s; }
+    input, select { 
+      width: 100%; 
+      max-width: 100%; 
+      padding: 12px; 
+      border: 1px solid #cfd8dc; 
+      border-radius: 10px; 
+      background: #fff; 
+      font-size: 16px; 
+      transition: border-color 0.2s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
     input:focus { border-color: #2f7d32; outline: none; }
     
     /* --- モード切替 --- */
@@ -38,7 +49,7 @@
     .checklist-box { background: #f8fbf8; border: 1px solid #d7e4d8; border-radius: 12px; padding: 12px; }
     .check-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e8eeea; }
     .check-item:last-child { border-bottom: none; }
-    .check-item input { width: 24px; height: 24px; cursor: pointer; margin: 0; flex-shrink: 0; }
+    .check-item input { width: 24px; height: 24px; cursor: pointer; margin: 0; flex-shrink: 0; -webkit-appearance: checkbox; appearance: checkbox; }
     .check-item label { margin-bottom: 0; cursor: pointer; flex: 1; font-size: 15px; }
 
     /* --- 表示制御 --- */
@@ -194,7 +205,7 @@
     let currentModalTab = 'history';
 
     function setAppMode(mode) {
-      document.body.className = `mode-${mode}`;
+      document.body.className = (mode === 'light') ? 'mode-light' : 'mode-expert';
       document.getElementById('tabLight').classList.toggle('active', mode === 'light');
       document.getElementById('tabExpert').classList.toggle('active', mode === 'expert');
       document.getElementById('tabPending').style.display = (mode === 'expert') ? 'block' : 'none';
@@ -353,7 +364,7 @@
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = `防除日誌_${new Date().toISOString().slice(0,10)}.csv`;
+      link.download = `防除記録_${new Date().toISOString().slice(0,10)}.csv`;
       link.click();
     }
 
