@@ -2,945 +2,368 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>農薬希釈計算アプリ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>農薬希釈計算アプリ Pro</title>
   <style>
-    * {
-      box-sizing: border-box;
+    /* --- 基本スタイル --- */
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7f8; color: #222; padding-bottom: 100px; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+    .card { background: #fff; border-radius: 14px; padding: 18px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); border: 1px solid #eef0f1; }
+    h1 { font-size: 22px; margin: 0 0 16px; color: #2f7d32; text-align: center; }
+    h2 { font-size: 18px; margin: 0 0 14px; border-left: 4px solid #2f7d32; padding-left: 10px; }
+    
+    /* フォーム周りの整理 */
+    .field-group { margin-bottom: 14px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; color: #555; }
+    input, select { width: 100%; padding: 12px; border: 1px solid #cfd8dc; border-radius: 10px; background: #fff; font-size: 16px; transition: border-color 0.2s; }
+    input:focus { border-color: #2f7d32; outline: none; }
+    
+    /* --- モード切替 --- */
+    .mode-selector { display: flex; background: #e0e0e0; border-radius: 12px; padding: 4px; margin-bottom: 20px; }
+    .mode-tab { flex: 1; text-align: center; padding: 12px; border-radius: 9px; cursor: pointer; font-weight: bold; color: #666; transition: all 0.2s; }
+    .mode-tab.active { background: #fff; color: #2f7d32; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+    /* --- ボタン類 --- */
+    .btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; width: 100%; }
+    button { border: none; border-radius: 10px; padding: 14px; background: #2f7d32; color: white; cursor: pointer; font-weight: 600; font-size: 15px; flex: 1; display: flex; align-items: center; justify-content: center; }
+    button.sub { background: #607d8b; }
+    button.light { background: #eceff1; color: #222; flex: none; min-width: 80px; }
+    button.warn { background: #d84315; }
+    button:disabled { background: #cfd8dc !important; color: #777 !important; cursor: not-allowed; }
+
+    .result-box { padding: 20px; background: #f1f8e9; border: 2px solid #c5e1a5; border-radius: 12px; font-size: 19px; font-weight: 700; text-align: center; margin: 10px 0; }
+    
+    /* 防除前チェック */
+    .checklist-box { background: #f8fbf8; border: 1px solid #d7e4d8; border-radius: 12px; padding: 12px; }
+    .check-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e8eeea; }
+    .check-item:last-child { border-bottom: none; }
+    .check-item input { width: 24px; height: 24px; cursor: pointer; margin: 0; flex-shrink: 0; }
+    .check-item label { margin-bottom: 0; cursor: pointer; flex: 1; font-size: 15px; }
+
+    /* --- 表示制御 --- */
+    .expert-only { display: none; }
+    .light-only { display: block; }
+    body.mode-expert .expert-only { display: block; }
+    body.mode-expert .btn-row.expert-only { display: flex; }
+    body.mode-expert .light-only { display: none; }
+
+    /* 📅ボタン + バッジ */
+    #fab-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
+    #fab { width: 66px; height: 66px; border-radius: 50%; background: #2f7d32; color: white; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 28px; cursor: pointer; position: relative; }
+    .badge { position: absolute; top: -2px; right: -2px; background: #ff3b30; color: white; border-radius: 50%; min-width: 24px; height: 24px; padding: 0 6px; font-size: 13px; font-weight: bold; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
+    /* トースト通知 */
+    #toast-container { position: fixed; bottom: 100px; right: 20px; z-index: 3000; pointer-events: none; max-width: 280px; }
+    .toast { background: rgba(0,0,0,0.85); color: #fff; padding: 14px 20px; border-radius: 16px; margin-bottom: 10px; font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); animation: fadeinout 4.5s forwards; line-height: 1.4; }
+    @keyframes fadeinout {
+      0% { opacity: 0; transform: translateX(20px); }
+      8% { opacity: 1; transform: translateX(0); }
+      92% { opacity: 1; transform: translateX(0); }
+      100% { opacity: 0; transform: translateX(20px); }
     }
 
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f5f7f8;
-      color: #222;
-    }
-
-    .wrap {
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 16px;
-    }
-
-    .card {
-      background: #fff;
-      border-radius: 14px;
-      padding: 16px;
-      margin-bottom: 16px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    }
-
-    h1 {
-      font-size: 24px;
-      margin: 0 0 12px;
-    }
-
-    h2 {
-      font-size: 18px;
-      margin: 0 0 12px;
-    }
-
-    p {
-      margin: 6px 0;
-    }
-
-    label {
-      display: block;
-      font-weight: 600;
-      margin-bottom: 6px;
-    }
-
-    input,
-    select,
-    button,
-    textarea {
-      font-size: 16px;
-    }
-
-    input,
-    select {
-      width: 100%;
-      padding: 12px;
-      border: 1px solid #cfd8dc;
-      border-radius: 10px;
-      margin-bottom: 12px;
-      background: #fff;
-    }
-
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .btn-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    button {
-      border: none;
-      border-radius: 10px;
-      padding: 12px 14px;
-      background: #2f7d32;
-      color: white;
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    button.sub {
-      background: #607d8b;
-    }
-
-    button.light {
-      background: #eceff1;
-      color: #222;
-    }
-
-    button.warn {
-      background: #d84315;
-    }
-
-    button:disabled,
-    .disabled-btn {
-      background: #cfd8dc !important;
-      color: #777 !important;
-      cursor: not-allowed;
-    }
-
-    .result-box {
-      padding: 14px;
-      background: #f1f8e9;
-      border-radius: 12px;
-      font-size: 18px;
-      font-weight: 700;
-      line-height: 1.6;
-    }
-
-    .small {
-      font-size: 13px;
-      color: #666;
-    }
-
-    .premium-note {
-      color: #c62828;
-      font-size: 13px;
-      margin-top: -6px;
-      margin-bottom: 12px;
-    }
-
-    .history-item {
-      border: 1px solid #e0e0e0;
-      border-radius: 12px;
-      padding: 12px;
-      margin-bottom: 10px;
-      background: #fafafa;
-    }
-
-    .history-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: flex-start;
-      margin-bottom: 8px;
-    }
-
-    .history-title {
-      font-weight: 700;
-      line-height: 1.5;
-    }
-
-    .history-meta {
-      font-size: 13px;
-      color: #666;
-      line-height: 1.5;
-    }
-
-    .history-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 10px;
-    }
-
-    .ref-buttons {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    .ref-buttons button {
-      background: #1565c0;
-      padding: 10px 12px;
-      font-size: 14px;
-    }
-
-    .section-gap {
-      margin-top: 8px;
-    }
-
-    .muted-box {
-      background: #f8f9fa;
-      border: 1px dashed #cfd8dc;
-      border-radius: 12px;
-      padding: 12px;
-    }
-
-    .checklist-box {
-      background: #f8fbf8;
-      border: 1px solid #d7e4d8;
-      border-radius: 12px;
-      padding: 12px;
-    }
-
-    .check-item {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 10px 0;
-      border-bottom: 1px solid #e8eeea;
-    }
-
-    .check-item:last-child {
-      border-bottom: none;
-    }
-
-    .check-item input[type="checkbox"] {
-      width: 20px;
-      height: 20px;
-      margin-top: 2px;
-      margin-bottom: 0;
-      flex-shrink: 0;
-    }
-
-    .check-item label {
-      margin: 0;
-      font-weight: 500;
-      line-height: 1.5;
-      cursor: pointer;
-    }
-
-    .check-status {
-      margin-top: 10px;
-      font-size: 13px;
-      color: #666;
-    }
-
-    @media (max-width: 560px) {
-      .row {
-        grid-template-columns: 1fr;
-      }
-
-      .history-top {
-        flex-direction: column;
-      }
-    }
+    /* モーダル */
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; display: none; justify-content: center; align-items: flex-end; }
+    .modal-content { background: #fff; width: 100%; max-width: 600px; height: 85vh; border-radius: 24px 24px 0 0; display: flex; flex-direction: column; overflow: hidden; animation: slideUp 0.3s ease-out; }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .modal-tabs { display: flex; border-bottom: 1px solid #eee; background: #f8f9fa; }
+    .tab-btn { flex: 1; padding: 16px; border: none; background: none; font-weight: bold; color: #888; border-bottom: 4px solid transparent; }
+    .tab-btn.active { color: #2f7d32; border-bottom-color: #2f7d32; background: #fff; }
+    .modal-body { flex: 1; overflow-y: auto; padding: 16px; background: #fdfdfd; }
+    .item-card { border: 1px solid #e0e0e0; border-radius: 12px; padding: 16px; margin-bottom: 12px; background: #fff; position: relative; }
+    .item-card.today { border-left: 6px solid #ff9800; background: #fffaf0; }
   </style>
 </head>
-<body>
+<body class="mode-light">
   <div class="wrap">
-    <div class="card">
-      <h1>農薬希釈計算アプリ</h1>
-      <p class="small">現場で使うためのシンプル計算ツール</p>
+    <h1>農薬希釈計算</h1>
+
+    <div class="mode-selector">
+      <div id="tabLight" class="mode-tab active" onclick="setAppMode('light')">ライト</div>
+      <div id="tabExpert" class="mode-tab" onclick="setAppMode('expert')">エキスパート</div>
     </div>
 
     <div class="card">
-      <h2>希釈計算</h2>
-
-      <label for="fieldSelect">園場</label>
-      <select id="fieldSelect"></select>
-
-      <div class="btn-row">
-        <button id="addFieldBtn" type="button">園場追加</button>
-        <button id="renameFieldBtn" class="sub" type="button">園場名変更</button>
-        <button id="resetFieldsBtn" class="warn" type="button">園場初期化</button>
-      </div>
-      <div id="fieldPremiumNote" class="premium-note" style="display:none;">
-        ※有料版で利用できます
-      </div>
-
-      <label for="itemName">作物・薬剤名</label>
-      <input
-        id="itemName"
-        type="text"
-        placeholder="例：ブロッコリー・○○"
-      />
-
-      <div class="section-gap">
-        <label>履歴から呼び出し</label>
-        <div id="historyRefButtons" class="ref-buttons"></div>
-        <p class="small">よく使った履歴を押すと、作物・薬剤名や数値が入力されます。</p>
+      <div class="expert-only">
+        <div class="field-group">
+          <label>園場</label>
+          <select id="fieldSelect"></select>
+          <div class="btn-row" style="margin-top: 8px;">
+            <button onclick="alert('有料機能')" style="opacity:0.5; font-size:12px; padding:8px;" disabled>園場追加(有料)</button>
+            <button onclick="renameField()" class="sub" style="font-size:12px; padding:8px;">名称変更</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>散布面積 (a)</label>
+          <input type="number" id="areaSize" placeholder="例: 10">
+        </div>
+        <div class="field-group">
+          <label>作業予定日</label>
+          <input type="date" id="planDate">
+        </div>
       </div>
 
-      <label for="tank">タンク容量（L）</label>
-      <input id="tank" type="number" inputmode="decimal" placeholder="例：500" />
-      <div class="btn-row">
-        <button class="light preset-tank" type="button" data-value="200">200L</button>
-        <button class="light preset-tank" type="button" data-value="500">500L</button>
-        <button class="light preset-tank" type="button" data-value="1000">1000L</button>
+      <div class="field-group">
+        <label>作物・薬剤名</label>
+        <input id="itemName" type="text" placeholder="例：キャベツ・アディオン" oninput="validateForm()" />
+        <div id="historyRefButtons" class="btn-row"></div>
       </div>
 
-      <label for="ratio">希釈倍率</label>
-      <input id="ratio" type="number" inputmode="decimal" placeholder="例：1000" />
-      <div class="btn-row">
-        <button class="light preset-ratio" type="button" data-value="1000">1000倍</button>
-        <button class="light preset-ratio" type="button" data-value="2000">2000倍</button>
-        <button class="light preset-ratio" type="button" data-value="3000">3000倍</button>
+      <div class="field-group">
+        <label>タンク容量（L）</label>
+        <input id="tank" type="number" inputmode="decimal" placeholder="500" oninput="validateForm()" />
+        <div class="btn-row">
+          <button class="light" onclick="setTank(200)">200L</button>
+          <button class="light" onclick="setTank(500)">500L</button>
+          <button class="light" onclick="setTank(1000)">1000L</button>
+        </div>
       </div>
 
-      <div class="btn-row">
-        <button id="calcBtn" type="button">計算する</button>
-        <button id="saveBtn" class="sub" type="button">履歴保存</button>
+      <div class="field-group">
+        <label>希釈倍率</label>
+        <input id="ratio" type="number" inputmode="decimal" placeholder="1000" oninput="validateForm()" />
+        <div class="btn-row">
+          <button class="light" onclick="setRatio(1000)">1000倍</button>
+          <button class="light" onclick="setRatio(2000)">2000倍</button>
+          <button class="light" onclick="setRatio(3000)">3000倍</button>
+        </div>
       </div>
 
-      <div class="result-box" id="resultBox">
-        薬量：-<br />
-        薬量：- L
+      <div class="result-box" id="resultBox">薬量：-<br>薬量：- L</div>
+
+      <div class="btn-row" style="margin-top: 10px;">
+        <button id="mainSaveBtn" onclick="saveRecord('done')" style="flex: 2;">実績として保存</button>
+        <button id="planBtn" onclick="saveRecord('planned')" class="sub expert-only" style="flex: 1;">予定保存</button>
       </div>
     </div>
 
     <div class="card">
       <h2>防除前チェック</h2>
-      <div class="checklist-box" id="checklistBox">
-        <div class="check-item">
-          <input type="checkbox" class="precheck" id="check1" value="作物・園場を確認した" />
-          <label for="check1">作物・園場を確認した</label>
+      <div class="expert-only">
+        <div class="checklist-box">
+          <div class="check-item"><input type="checkbox" class="precheck" id="c1" onchange="validateForm()"><label for="c1">作物・園場を確認した</label></div>
+          <div class="check-item"><input type="checkbox" class="precheck" id="c2" onchange="validateForm()"><label for="c2">薬剤名と有効期限を確認した</label></div>
+          <div class="check-item"><input type="checkbox" class="precheck" id="c3" onchange="validateForm()"><label for="c3">希釈倍率を確認した</label></div>
+          <div class="check-item"><input type="checkbox" class="precheck" id="c4" onchange="validateForm()"><label for="c4">必要な保護具を確認した</label></div>
+          <div class="check-item"><input type="checkbox" class="precheck" id="c5" onchange="validateForm()"><label for="c5">記録内容を確認した</label></div>
         </div>
-        <div class="check-item">
-          <input type="checkbox" class="precheck" id="check2" value="薬剤名と有効期限を確認した" />
-          <label for="check2">薬剤名と有効期限を確認した</label>
-        </div>
-        <div class="check-item">
-          <input type="checkbox" class="precheck" id="check3" value="希釈倍率を確認した" />
-          <label for="check3">希釈倍率を確認した</label>
-        </div>
-        <div class="check-item">
-          <input type="checkbox" class="precheck" id="check4" value="必要な保護具を確認した" />
-          <label for="check4">必要な保護具を確認した</label>
-        </div>
-        <div class="check-item">
-          <input type="checkbox" class="precheck" id="check5" value="記録内容を確認した" />
-          <label for="check5">記録内容を確認した</label>
-        </div>
+        <p id="checkStatus" style="font-size:13px; font-weight:bold; margin-top:12px; color:#2f7d32;"></p>
+        <button class="light" onclick="clearChecks()" style="margin-top:8px; width:100%; font-size:13px; padding:10px;">チェックを外す</button>
       </div>
-      <p class="check-status" id="checkStatus">チェック状況：0 / 5</p>
-      <div class="btn-row">
-        <button id="clearChecksBtn" class="light" type="button">チェックを外す</button>
+      <div class="light-only" style="background: #f8fbf8; border: 1px solid #d7e4d8; border-radius: 12px; padding: 18px; color: #555; line-height: 1.8; font-size: 15px;">
+        ※作業前に以下の点を確認しましょう。<br>
+        ・作物、園場の間違いはないか<br>
+        ・薬剤名、有効期限、希釈倍率<br>
+        ・必要な保護具の着用<br>
+        ・記録内容の確認
       </div>
-      <p class="small">履歴保存するには、すべての項目にチェックが必要です。</p>
     </div>
 
-    <div class="card">
+    <div class="card expert-only">
       <h2>データ管理</h2>
-      <div class="btn-row">
-        <button id="csvBtn" type="button">CSV書き出し</button>
-        <button id="csvFieldBtn" type="button">CSV園場ごと書き出し</button>
-        <button id="backupBtn" type="button">バックアップ</button>
-        <button id="restoreBtn" type="button">復元</button>
-      </div>
-      <div id="premiumDataNote" class="premium-note" style="display:none;">
-        ※CSV書き出し・バックアップ・復元は有料版で利用できます
-      </div>
-      <input id="restoreFileInput" type="file" accept=".json" style="display:none;" />
+      <button onclick="exportToExcel()" style="width:100%;" class="sub">エクセル用CSV出力</button>
     </div>
+  </div>
 
-    <div class="card">
-      <h2>履歴</h2>
-      <div id="historyList"></div>
+  <div id="toast-container"></div>
+
+  <div id="fab-container">
+    <button id="fab" onclick="openModal()">
+      📅
+      <div id="badge" class="badge" style="display:none;">0</div>
+    </button>
+  </div>
+
+  <div id="modalOverlay" class="modal-overlay" onclick="closeModal()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div id="modalTabs" class="modal-tabs">
+        <button id="tabPending" class="tab-btn" onclick="switchModalTab('pending')">未完了</button>
+        <button id="tabFuture" class="tab-btn" onclick="switchModalTab('future')">明日以降</button>
+        <button id="tabHistory" class="tab-btn active" onclick="switchModalTab('history')">履歴</button>
+      </div>
+      <div id="modalList" class="modal-body"></div>
     </div>
   </div>
 
   <script>
-    // =========================
-    // 設定
-    // =========================
-    const IS_PREMIUM = false;
+    const STORAGE_KEYS = { history: "nouyaku_history_v4", fields: "nouyaku_fields_v2", schedules: "nouyaku_schedules_v3" };
+    let historyData = JSON.parse(localStorage.getItem(STORAGE_KEYS.history)) || [];
+    let fields = JSON.parse(localStorage.getItem(STORAGE_KEYS.fields)) || ["畑A", "畑B", "畑C"];
+    let schedules = JSON.parse(localStorage.getItem(STORAGE_KEYS.schedules)) || [];
+    let currentModalTab = 'history';
 
-    const FREE_HISTORY_LIMIT = 10;
-    const PREMIUM_HISTORY_LIMIT = 100;
+    function setAppMode(mode) {
+      document.body.className = `mode-${mode}`;
+      document.getElementById('tabLight').classList.toggle('active', mode === 'light');
+      document.getElementById('tabExpert').classList.toggle('active', mode === 'expert');
+      document.getElementById('tabPending').style.display = (mode === 'expert') ? 'block' : 'none';
+      document.getElementById('tabFuture').style.display = (mode === 'expert') ? 'block' : 'none';
+      currentModalTab = (mode === 'expert') ? 'pending' : 'history';
+      if(mode === 'expert') document.getElementById('planDate').valueAsDate = new Date();
+      validateForm(); updateBadge();
+    }
 
-    const FREE_FIELD_LIMIT = 3;
-    const DEFAULT_FIELDS = ["畑A", "畑B", "畑C"];
+    function init() { renderFields(); renderRefButtons(); validateForm(); updateBadge(); }
 
-    const STORAGE_KEYS = {
-      history: "nouyaku_history_v3",
-      fields: "nouyaku_fields_v2"
-    };
+    function renderFields() { document.getElementById("fieldSelect").innerHTML = fields.map(f => `<option value="${f}">${f}</option>`).join(""); }
 
-    // =========================
-    // 要素取得
-    // =========================
-    const fieldSelect = document.getElementById("fieldSelect");
-    const addFieldBtn = document.getElementById("addFieldBtn");
-    const renameFieldBtn = document.getElementById("renameFieldBtn");
-    const resetFieldsBtn = document.getElementById("resetFieldsBtn");
-    const fieldPremiumNote = document.getElementById("fieldPremiumNote");
-
-    const itemName = document.getElementById("itemName");
-    const historyRefButtons = document.getElementById("historyRefButtons");
-
-    const tank = document.getElementById("tank");
-    const ratio = document.getElementById("ratio");
-    const calcBtn = document.getElementById("calcBtn");
-    const saveBtn = document.getElementById("saveBtn");
-    const resultBox = document.getElementById("resultBox");
-
-    const csvBtn = document.getElementById("csvBtn");
-    const csvFieldBtn = document.getElementById("csvFieldBtn");
-    const backupBtn = document.getElementById("backupBtn");
-    const restoreBtn = document.getElementById("restoreBtn");
-    const premiumDataNote = document.getElementById("premiumDataNote");
-    const restoreFileInput = document.getElementById("restoreFileInput");
-
-    const historyList = document.getElementById("historyList");
-
-    const clearChecksBtn = document.getElementById("clearChecksBtn");
-    const checkStatus = document.getElementById("checkStatus");
-
-    // =========================
-    // 状態
-    // =========================
-    let historyData = loadHistory();
-    let fields = loadFields();
-
-    // =========================
-    // 初期化
-    // =========================
-    init();
-
-    function init() {
-      applyPremiumUI();
-      renderFields();
-      renderHistory();
-      renderHistoryRefButtons();
-      bindPresetButtons();
-      bindPrecheckEvents();
-      updateCheckStatus();
+    function validateForm() {
+      const name = document.getElementById("itemName").value.trim();
+      const tank = Number(document.getElementById("tank").value);
+      const ratio = Number(document.getElementById("ratio").value);
+      const isValid = name !== "" && tank > 0 && ratio > 0;
+      const isExpert = document.body.classList.contains('mode-expert');
+      if (isExpert) {
+        const checkCount = document.querySelectorAll(".precheck:checked").length;
+        document.getElementById("checkStatus").textContent = `チェック状況：${checkCount} / 5`;
+        document.getElementById("mainSaveBtn").disabled = !(isValid && checkCount === 5);
+      } else {
+        document.getElementById("mainSaveBtn").disabled = !isValid;
+      }
       updateResult();
     }
 
-    // =========================
-    // Premium制御
-    // =========================
-    function applyPremiumUI() {
-      if (!IS_PREMIUM) {
-        addFieldBtn.disabled = true;
-        addFieldBtn.classList.add("disabled-btn");
-        fieldPremiumNote.style.display = "block";
-
-        csvBtn.disabled = true;
-        csvFieldBtn.disabled = true;
-        backupBtn.disabled = true;
-        restoreBtn.disabled = true;
-        premiumDataNote.style.display = "block";
-      }
+    function updateResult() {
+      const t = Number(document.getElementById("tank").value);
+      const r = Number(document.getElementById("ratio").value);
+      const res = document.getElementById("resultBox");
+      if (!t || !r) { res.innerHTML = "薬量：-<br>薬量：- L"; return; }
+      const ml = (t / r) * 1000;
+      res.innerHTML = `薬量：${ml.toFixed(1)} ml<br>薬量：${(t / r).toFixed(3)} L`;
     }
 
-    // =========================
-    // ロード / セーブ
-    // =========================
-    function loadHistory() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEYS.history);
-        return raw ? JSON.parse(raw) : [];
-      } catch (e) {
-        return [];
-      }
+    function setTank(v) { document.getElementById("tank").value = v; validateForm(); }
+    function setRatio(v) { document.getElementById("ratio").value = v; validateForm(); }
+    function clearChecks() { document.querySelectorAll(".precheck").forEach(c => c.checked = false); validateForm(); }
+
+    function showToast(msg) {
+      const container = document.getElementById("toast-container");
+      const toast = document.createElement("div");
+      toast.className = "toast";
+      toast.innerHTML = msg;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 4500);
     }
 
-    function saveHistory() {
-      localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(historyData));
+    function updateBadge() {
+      const today = new Date().toLocaleDateString('ja-JP').replace(/\//g, '-');
+      const count = schedules.filter(s => s.date <= today).length;
+      const badge = document.getElementById("badge");
+      if (count > 0 && document.body.classList.contains('mode-expert')) {
+        badge.textContent = count; badge.style.display = "flex";
+      } else { badge.style.display = "none"; }
     }
 
-    function loadFields() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEYS.fields);
-        const parsed = raw ? JSON.parse(raw) : null;
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        return [...DEFAULT_FIELDS];
-      } catch (e) {
-        return [...DEFAULT_FIELDS];
-      }
-    }
-
-    function saveFields() {
-      localStorage.setItem(STORAGE_KEYS.fields, JSON.stringify(fields));
-    }
-
-    // =========================
-    // 園場
-    // =========================
-    function renderFields() {
-      fieldSelect.innerHTML = "";
-      fields.forEach((field) => {
-        const option = document.createElement("option");
-        option.value = field;
-        option.textContent = field;
-        fieldSelect.appendChild(option);
-      });
-    }
-
-    addFieldBtn.addEventListener("click", () => {
-      if (!IS_PREMIUM) return;
-
-      if (!IS_PREMIUM && fields.length >= FREE_FIELD_LIMIT) {
-        alert("無料版では園場は3件までです。");
-        return;
-      }
-
-      const name = prompt("追加する園場名を入力してください");
-      if (!name) return;
-
-      const trimmed = name.trim();
-      if (!trimmed) return;
-
-      if (fields.includes(trimmed)) {
-        alert("同じ園場名があります。");
-        return;
-      }
-
-      fields.push(trimmed);
-      saveFields();
-      renderFields();
-      fieldSelect.value = trimmed;
-    });
-
-    renameFieldBtn.addEventListener("click", () => {
-      const current = fieldSelect.value;
-      if (!current) return;
-
-      const renamed = prompt("新しい園場名を入力してください", current);
-      if (!renamed) return;
-
-      const trimmed = renamed.trim();
-      if (!trimmed) return;
-
-      if (fields.includes(trimmed) && trimmed !== current) {
-        alert("同じ園場名があります。");
-        return;
-      }
-
-      const idx = fields.indexOf(current);
-      if (idx !== -1) {
-        fields[idx] = trimmed;
-        saveFields();
-        renderFields();
-        fieldSelect.value = trimmed;
-
-        historyData = historyData.map((item) => {
-          if (item.field === current) {
-            return { ...item, field: trimmed };
-          }
-          return item;
-        });
-        saveHistory();
-        renderHistory();
-        renderHistoryRefButtons();
-      }
-    });
-
-    resetFieldsBtn.addEventListener("click", () => {
-      const ok = confirm("園場を初期状態（畑A/B/C）に戻しますか？");
-      if (!ok) return;
-
-      fields = [...DEFAULT_FIELDS];
-      saveFields();
-      renderFields();
-    });
-
-    // =========================
-    // プリセット
-    // =========================
-    function bindPresetButtons() {
-      document.querySelectorAll(".preset-tank").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          tank.value = btn.dataset.value;
-          updateResult();
-        });
-      });
-
-      document.querySelectorAll(".preset-ratio").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          ratio.value = btn.dataset.value;
-          updateResult();
-        });
-      });
-    }
-
-    tank.addEventListener("input", updateResult);
-    ratio.addEventListener("input", updateResult);
-
-    calcBtn.addEventListener("click", () => {
-      updateResult(true);
-    });
-
-    function updateResult(showAlert = false) {
-      const tankVal = Number(tank.value);
-      const ratioVal = Number(ratio.value);
-
-      if (!tankVal || !ratioVal || tankVal <= 0 || ratioVal <= 0) {
-        resultBox.innerHTML = "薬量：-<br>薬量：- L";
-        if (showAlert) {
-          alert("タンク容量と希釈倍率を入力してください。");
-        }
-        return;
-      }
-
-      const amountL = tankVal / ratioVal;
-      const amountMl = amountL * 1000;
-
-      resultBox.innerHTML = `
-        薬量：${amountMl.toFixed(1)} ml<br>
-        薬量：${amountL.toFixed(3)} L
-      `;
-    }
-
-    // =========================
-    // 防除前チェック
-    // =========================
-    function getAllPrechecks() {
-      return Array.from(document.querySelectorAll(".precheck")).map((el) => el.value);
-    }
-
-    function getCheckedPrechecks() {
-      return Array.from(document.querySelectorAll(".precheck:checked")).map((el) => el.value);
-    }
-
-    function clearPrechecks() {
-      document.querySelectorAll(".precheck").forEach((el) => {
-        el.checked = false;
-      });
-      updateCheckStatus();
-    }
-
-    function updateCheckStatus() {
-      const checked = getCheckedPrechecks().length;
-      const total = getAllPrechecks().length;
-      checkStatus.textContent = `チェック状況：${checked} / ${total}`;
-    }
-
-    function bindPrecheckEvents() {
-      document.querySelectorAll(".precheck").forEach((el) => {
-        el.addEventListener("change", updateCheckStatus);
-      });
-
-      clearChecksBtn.addEventListener("click", clearPrechecks);
-    }
-
-    // =========================
-    // 履歴保存
-    // =========================
-    saveBtn.addEventListener("click", () => {
-      const checkedPrechecks = getCheckedPrechecks();
-      const allPrechecks = getAllPrechecks();
-
-      if (checkedPrechecks.length !== allPrechecks.length) {
-        alert("防除前チェックが未完了です。すべて確認してから保存してください。");
-        return;
-      }
-
-      const field = fieldSelect.value;
-      const name = itemName.value.trim();
-      const tankVal = Number(tank.value);
-      const ratioVal = Number(ratio.value);
-
-      if (!name) {
-        alert("作物・薬剤名を入力してください。");
-        return;
-      }
-
-      if (!tankVal || !ratioVal || tankVal <= 0 || ratioVal <= 0) {
-        alert("タンク容量と希釈倍率を入力してください。");
-        return;
-      }
-
-      const limit = IS_PREMIUM ? PREMIUM_HISTORY_LIMIT : FREE_HISTORY_LIMIT;
-
-      const amountL = tankVal / ratioVal;
-      const amountMl = amountL * 1000;
-
+    function saveRecord(type) {
+      const name = document.getElementById("itemName").value.trim();
       const record = {
         id: Date.now(),
-        date: formatDate(new Date()),
-        field,
-        itemName: name,
-        tank: tankVal,
-        ratio: ratioVal,
-        amountMl: Number(amountMl.toFixed(1)),
-        amountL: Number(amountL.toFixed(3)),
-        checks: checkedPrechecks
+        date: type === 'planned' ? document.getElementById("planDate").value : new Date().toLocaleDateString('ja-JP').replace(/\//g, '-'),
+        field: document.getElementById("fieldSelect").value,
+        area: document.getElementById("areaSize").value || "-",
+        itemName: name, tank: document.getElementById("tank").value, ratio: document.getElementById("ratio").value,
+        amountMl: ((document.getElementById("tank").value / document.getElementById("ratio").value) * 1000).toFixed(1)
       };
-
-      historyData.unshift(record);
-      if (historyData.length > limit) {
-        historyData = historyData.slice(0, limit);
+      if (type === 'done') {
+        historyData.unshift(record);
+        localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(historyData));
+        showToast("実績を保存しました"); clearChecks();
+      } else {
+        schedules.push(record);
+        localStorage.setItem(STORAGE_KEYS.schedules, JSON.stringify(schedules));
+        showToast("予定を保存しました<br>作業時はこちらを開いてください ➔ 📅");
       }
+      updateBadge(); renderRefButtons();
+    }
 
-      saveHistory();
-      renderHistory();
-      renderHistoryRefButtons();
-      clearPrechecks();
-      alert("履歴を保存しました。");
-    });
+    function openModal() { document.getElementById("modalOverlay").style.display = "flex"; renderModalList(); }
+    function closeModal() { document.getElementById("modalOverlay").style.display = "none"; }
+    function switchModalTab(tab) {
+      currentModalTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.id === `tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`));
+      renderModalList();
+    }
 
-    // =========================
-    // 履歴表示
-    // =========================
-    function renderHistory() {
-      if (historyData.length === 0) {
-        historyList.innerHTML = `<p class="small">履歴はまだありません。</p>`;
-        return;
-      }
+    function moveNextDay(id) {
+      const item = schedules.find(s => s.id === id);
+      if (!item) return;
+      const d = new Date(item.date); d.setDate(d.getDate() + 1);
+      item.date = d.toISOString().split('T')[0];
+      localStorage.setItem(STORAGE_KEYS.schedules, JSON.stringify(schedules));
+      showToast("予定を明日に変更しました"); updateBadge(); renderModalList();
+    }
 
-      historyList.innerHTML = historyData.map((item) => {
-        return `
-          <div class="history-item">
-            <div class="history-top">
-              <div>
-                <div class="history-title">${escapeHtml(item.itemName)}</div>
-                <div class="history-meta">
-                  ${escapeHtml(item.date)} / ${escapeHtml(item.field)}
-                </div>
-              </div>
-              <div class="history-meta">
-                ${item.tank}L / ${item.ratio}倍
-              </div>
-            </div>
-
-            <div class="history-meta">
-              薬量：${item.amountMl} ml / ${item.amountL} L
-            </div>
-
-            <div class="history-meta" style="margin-top:6px;">
-              防除前チェック：${item.checks && item.checks.length > 0 ? escapeHtml(item.checks.join(" / ")) : "なし"}
-            </div>
-
-            <div class="history-actions">
-              <button type="button" class="light" onclick="reuseHistory(${item.id})">この内容を呼び出す</button>
-              <button type="button" class="warn" onclick="deleteHistory(${item.id})">削除</button>
-            </div>
+    function renderModalList() {
+      const list = document.getElementById("modalList");
+      const today = new Date().toLocaleDateString('ja-JP').replace(/\//g, '-');
+      list.innerHTML = "";
+      let data = (currentModalTab === 'history') ? historyData : (currentModalTab === 'pending' ? schedules.filter(s => s.date <= today) : schedules.filter(s => s.date > today));
+      if (data.length === 0) { list.innerHTML = "<p style='text-align:center;color:#999;margin-top:20px;'>データがありません</p>"; return; }
+      data.forEach(item => {
+        const isPending = currentModalTab === 'pending';
+        const div = document.createElement("div");
+        div.className = `item-card ${item.date === today && !isPending ? '' : (isPending ? 'today' : '')}`;
+        div.innerHTML = `
+          <strong>${item.itemName}</strong> (${item.date})<br>
+          <small>${item.field} | ${item.tank}L | ${item.ratio}倍</small>
+          <div class="btn-row" style="margin-top:10px;">
+            <button class="light" style="padding:8px 12px; font-size:13px;" onclick="applyToForm(${item.id}, '${currentModalTab}')">作業開始</button>
+            ${isPending ? `<button class="sub" style="padding:8px; font-size:12px; flex:none; width:75px;" onclick="moveNextDay(${item.id})">明日へ</button>` : ''}
+            <button class="warn" style="padding:8px; font-size:12px; flex:none; width:55px;" onclick="deleteItem(${item.id}, '${currentModalTab}')">削除</button>
           </div>
         `;
-      }).join("");
-    }
-
-    function renderHistoryRefButtons() {
-      if (historyData.length === 0) {
-        historyRefButtons.innerHTML = `<span class="small">履歴がありません</span>`;
-        return;
-      }
-
-      const uniqueItems = [];
-      const used = new Set();
-
-      for (const item of historyData) {
-        if (!used.has(item.itemName)) {
-          used.add(item.itemName);
-          uniqueItems.push(item);
-        }
-        if (uniqueItems.length >= 6) break;
-      }
-
-      historyRefButtons.innerHTML = uniqueItems.map((item) => {
-        return `
-          <button type="button" onclick="reuseHistory(${item.id})">
-            ${escapeHtml(item.itemName)}
-          </button>
-        `;
-      }).join("");
-    }
-
-    window.reuseHistory = function(id) {
-      const item = historyData.find((h) => h.id === id);
-      if (!item) return;
-
-      itemName.value = item.itemName;
-      tank.value = item.tank;
-      ratio.value = item.ratio;
-
-      if (fields.includes(item.field)) {
-        fieldSelect.value = item.field;
-      }
-
-      clearPrechecks();
-
-      if (Array.isArray(item.checks)) {
-        document.querySelectorAll(".precheck").forEach((checkbox) => {
-          checkbox.checked = item.checks.includes(checkbox.value);
-        });
-      }
-
-      updateCheckStatus();
-      updateResult();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    };
-
-    window.deleteHistory = function(id) {
-      const ok = confirm("この履歴を削除しますか？");
-      if (!ok) return;
-
-      historyData = historyData.filter((item) => item.id !== id);
-      saveHistory();
-      renderHistory();
-      renderHistoryRefButtons();
-    };
-
-    function formatDate(date) {
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, "0");
-      const d = String(date.getDate()).padStart(2, "0");
-      return `${y}/${m}/${d}`;
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    }
-
-    // =========================
-    // CSV / バックアップ
-    // =========================
-    csvBtn.addEventListener("click", () => {
-      if (!IS_PREMIUM) return;
-      exportHistoryCsv();
-    });
-
-    csvFieldBtn.addEventListener("click", () => {
-      if (!IS_PREMIUM) return;
-      exportFieldCsv();
-    });
-
-    backupBtn.addEventListener("click", () => {
-      if (!IS_PREMIUM) return;
-      backupData();
-    });
-
-    restoreBtn.addEventListener("click", () => {
-      if (!IS_PREMIUM) return;
-      restoreFileInput.click();
-    });
-
-    restoreFileInput.addEventListener("change", (e) => {
-      if (!IS_PREMIUM) return;
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const data = JSON.parse(reader.result);
-          if (!Array.isArray(data.history) || !Array.isArray(data.fields)) {
-            throw new Error("形式が違います");
-          }
-
-          historyData = data.history;
-          fields = data.fields;
-          saveHistory();
-          saveFields();
-          renderFields();
-          renderHistory();
-          renderHistoryRefButtons();
-          clearPrechecks();
-          alert("復元しました。");
-        } catch (err) {
-          alert("復元に失敗しました。JSONファイルを確認してください。");
-        }
-      };
-      reader.readAsText(file, "utf-8");
-    });
-
-    function exportHistoryCsv() {
-      if (historyData.length === 0) {
-        alert("履歴がありません。");
-        return;
-      }
-
-      const rows = [
-        ["日付", "園場", "作物・薬剤名", "タンク容量(L)", "希釈倍率", "薬量(ml)", "薬量(L)", "防除前チェック"],
-        ...historyData.map(item => [
-          item.date,
-          item.field,
-          item.itemName,
-          item.tank,
-          item.ratio,
-          item.amountMl,
-          item.amountL,
-          Array.isArray(item.checks) ? item.checks.join(" / ") : ""
-        ])
-      ];
-
-      downloadCsv(rows, "nouyaku_history.csv");
-    }
-
-    function exportFieldCsv() {
-      if (historyData.length === 0) {
-        alert("履歴がありません。");
-        return;
-      }
-
-      const selectedField = fieldSelect.value;
-      const filtered = historyData.filter(item => item.field === selectedField);
-
-      if (filtered.length === 0) {
-        alert("この園場の履歴がありません。");
-        return;
-      }
-
-      const rows = [
-        ["日付", "園場", "作物・薬剤名", "タンク容量(L)", "希釈倍率", "薬量(ml)", "薬量(L)", "防除前チェック"],
-        ...filtered.map(item => [
-          item.date,
-          item.field,
-          item.itemName,
-          item.tank,
-          item.ratio,
-          item.amountMl,
-          item.amountL,
-          Array.isArray(item.checks) ? item.checks.join(" / ") : ""
-        ])
-      ];
-
-      downloadCsv(rows, `${selectedField}_history.csv`);
-    }
-
-    function downloadCsv(rows, filename) {
-      const csvContent = rows
-        .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(","))
-        .join("\r\n");
-
-      const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-      const blob = new Blob([bom, csvContent], { type: "text/csv;charset=utf-8;" });
-
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(link.href);
-    }
-
-    function backupData() {
-      const data = {
-        history: historyData,
-        fields: fields
-      };
-
-      const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: "application/json"
+        list.appendChild(div);
       });
+    }
 
+    function applyToForm(id, tab) {
+      const src = (tab === 'history') ? historyData : schedules;
+      const item = src.find(i => i.id === id);
+      if (!item) return;
+      document.getElementById("itemName").value = item.itemName;
+      document.getElementById("tank").value = item.tank;
+      document.getElementById("ratio").value = item.ratio;
+      if (document.body.classList.contains('mode-expert')) {
+        document.getElementById("fieldSelect").value = item.field;
+        document.getElementById("areaSize").value = item.area;
+      }
+      closeModal(); window.scrollTo({ top: 0, behavior: 'smooth' }); validateForm();
+    }
+
+    function deleteItem(id, tab) {
+      if (!confirm("削除しますか？")) return;
+      if (tab === 'history') historyData = historyData.filter(i => i.id !== id);
+      else schedules = schedules.filter(i => i.id !== id);
+      localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(historyData));
+      localStorage.setItem(STORAGE_KEYS.schedules, JSON.stringify(schedules));
+      updateBadge(); renderModalList();
+    }
+
+    function renderRefButtons() {
+      const container = document.getElementById("historyRefButtons");
+      const used = new Set(); const unique = [];
+      for (const h of historyData) { if (!used.has(h.itemName)) { used.add(h.itemName); unique.push(h); } if (unique.length >= 4) break; }
+      container.innerHTML = unique.map(h => `<button class="light" style="font-size:12px; padding:8px 10px;" onclick="applyToForm(${h.id}, 'history')">${h.itemName}</button>`).join("");
+    }
+
+    function exportToExcel() {
+      let csv = "\ufeff" + "実施日,園場名,面積(a),作物・薬剤名,液量(L),倍率,薬量(ml)\n";
+      historyData.forEach(r => { csv += `${r.date},${r.field},${r.area},${r.itemName},${r.tank},${r.ratio},${r.amountMl}\n`; });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = "nouyaku_backup.json";
+      link.download = `防除日誌_${new Date().toISOString().slice(0,10)}.csv`;
       link.click();
-      URL.revokeObjectURL(link.href);
     }
+
+    function renameField() {
+      const cur = document.getElementById("fieldSelect").value;
+      const next = prompt("名称変更", cur);
+      if(next) { fields = fields.map(f => f === cur ? next : f); localStorage.setItem(STORAGE_KEYS.fields, JSON.stringify(fields)); renderFields(); }
+    }
+
+    init();
   </script>
 </body>
 </html>
