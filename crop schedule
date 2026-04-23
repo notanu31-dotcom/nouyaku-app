@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="作業スケジュール">
+<title>📅 農業作業スケジュール</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { background: #f2f7f1; font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; }
+  input, select, button, textarea { font-family: inherit; }
+  .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useCallback, useMemo } = React;
+
+// ===== 日付ユーティリティ =====
+const YEAR = 2026;
+
+function makeDate(month, day, year = YEAR) {
+return new Date(year, month - 1, day);
+}
+function addDays(date, days) {
+const d = new Date(date);
+d.setDate(d.getDate() + days);
+return d;
+}
+function fmtDate(date) {
+if (!date) return “”;
+return `${date.getMonth()+1}/${date.getDate()}`;
+}
+function fmtDateFull(date) {
+if (!date) return “”;
+return `${date.getFullYear()}年${date.getMonth()+1}月${date.getDate()}日`;
+}
+function toInputDate(date) {
+if (!date) return “”;
+const y = date.getFullYear();
+const m = String(date.getMonth()+1).padStart(2,“0”);
+const d = String(date.getDate()).padStart(2,“0”);
+return `${y}-${m}-${d}`;
+}
+function fromInputDate(str) {
+if (!str) return null;
+const [y,m,d] = str.split(”-”).map(Number);
+return new Date(y, m-1, d);
+}
+// 年間の通算日（1/1=0）
+function dayOfYear(date) {
+const start = new Date(date.getFullYear(), 0, 0);
+const diff = date - start;
+return Math.floor(diff / 86400000);
+}
+// 月の通算日オフセット（表示用）
+const MONTH_DAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+const MONTH_OFFSET = MONTH_DAYS.reduce((acc, d, i) => {
+acc.push(i===0 ? 0 : acc[i-1] + MONTH_DAYS[i-1]);
+return acc;
+}, []);
+const TOTAL_DAYS = 365;
+
+// ===== 作業種別 =====
+const TASK_COLORS = {
+“播種・定植”: { bg:”#3a8a38”, text:”#fff” },
+“追肥・施肥”: { bg:”#b89030”, text:”#fff” },
+“防除・農薬”: { bg:”#d06020”, text:”#fff” },
+“土寄せ・管理”:{ bg:”#7a5a30”, text:”#fff” },
+“収穫”:        { bg:”#c03030”, text:”#fff” },
+“その他”:      { bg:”#4a6a8a”, text:”#fff” },
+};
+const TASK_TYPES = Object.keys(TASK_COLORS);
+
+// ===== 品種プリセット =====
+// tasks: [{name, type, offsetDays（播種/定植からの日数）, durationDays, memo}]
+// offsetDays < 0 → 播種日より前（前作業）
+// harvestOffset → 播種からの収穫までの日数
+const VARIETY_PRESETS = {
+“秋まき小麦”: [
+{
+id:“kitahonam”, name:“きたほなみ”,
+sowMonth:9, sowDay:15,          // 播種目安日
+harvestOffset:310,              // 播種から約310日後（翌年7月末）
+tasks:[
+{ name:“播種”,         type:“播種・定植”, offset:0,    dur:5,  memo:“播種量6kg/10a目安” },
+{ name:“雪腐病防除”,   type:“防除・農薬”, offset:60,   dur:7,  memo:“越冬前・根雪前に実施” },
+{ name:“追肥（穂肥）”, type:“追肥・施肥”, offset:220,  dur:5,  memo:“翌春5月上旬。尿素系窒素肥料” },
+{ name:“赤かび病防除”, type:“防除・農薬”, offset:275,  dur:7,  memo:“出穂後10〜14日が目安” },
+{ name:“収穫”,         type:“収穫”,       offset:310,  dur:10, memo:“含水率14.5%以下を確認” },
+]
+},
+{
+id:“yumechikara”, name:“ゆめちから”,
+sowMonth:9, sowDay:20,
+harvestOffset:315,
+tasks:[
+{ name:“播種”,         type:“播種・定植”, offset:0,    dur:5,  memo:“パン用強力粉品種” },
+{ name:“雪腐病防除”,   type:“防除・農薬”, offset:55,   dur:7,  memo:“越冬前に実施” },
+{ name:“追肥（穂肥）”, type:“追肥・施肥”, offset:225,  dur:5,  memo:“翌春5月中旬” },
+{ name:“赤かび病防除”, type:“防除・農薬”, offset:278,  dur:7,  memo:“出穂後10〜14日” },
+{ name:“収穫”,         type:“収穫”,       offset:315,  dur:10, memo:“含水率14.5%以下を確認” },
+]
+},
+],
+“大豆”: [
+{
+id:“toyomusume”, name:“トヨムスメ”,
+sowMonth:5, sowDay:20,
+harvestOffset:140,
+tasks:[
+{ name:“播種”,           type:“播種・定植”, offset:0,   dur:5,  memo:“播種量5〜6kg/10a” },
+{ name:“除草剤散布”,     type:“防除・農薬”, offset:10,  dur:3,  memo:“土壌処理型。播種後すぐ” },
+{ name:“中耕・培土①”,   type:“土寄せ・管理”,offset:28, dur:4,  memo:“播種後25〜30日。本葉4〜5枚時” },
+{ name:“中耕・培土②”,   type:“土寄せ・管理”,offset:45, dur:4,  memo:“開花前。最終培土” },
+{ name:“防除（カメムシ）”,type:“防除・農薬”,offset:65,  dur:7,  memo:“開花〜莢肥大期” },
+{ name:“収穫”,           type:“収穫”,       offset:140, dur:10, memo:“茎・莢が茶色くなったら適期” },
+]
+},
+{
+id:“toyomasyuri”, name:“とよまさり”,
+sowMonth:5, sowDay:25,
+harvestOffset:135,
+tasks:[
+{ name:“播種”,          type:“播種・定植”, offset:0,   dur:5,  memo:“北海道代表銘柄” },
+{ name:“除草剤散布”,    type:“防除・農薬”, offset:10,  dur:3,  memo:“土壌処理型” },
+{ name:“中耕・培土①”,  type:“土寄せ・管理”,offset:28, dur:4,  memo:“本葉4〜5枚時” },
+{ name:“中耕・培土②”,  type:“土寄せ・管理”,offset:44, dur:4,  memo:“開花前” },
+{ name:“防除（カメムシ）”,type:“防除・農薬”,offset:62, dur:7,  memo:“開花〜莢肥大期” },
+{ name:“収穫”,          type:“収穫”,        offset:135, dur:10, memo:“莢が茶色くなったら” },
+]
+},
+],
+“ブロッコリー”: [
+{
+id:“broc_standard”, name:“標準作型（早生）”,
+sowMonth:6, sowDay:20,
+harvestOffset:65,
+tasks:[
+{ name:“定植”,         type:“播種・定植”, offset:0,   dur:5,  memo:“株間45cm・列間60cm” },
+{ name:“追肥”,         type:“追肥・施肥”, offset:21,  dur:3,  memo:“定植3週後” },
+{ name:“防除”,         type:“防除・農薬”, offset:30,  dur:5,  memo:“アオムシ・コナガ” },
+{ name:“収穫”,         type:“収穫”,       offset:65,  dur:30, memo:“花蕾径15cm前後が目安。2Lサイズ管理” },
+]
+},
+{
+id:“broc_late”, name:“標準作型（晩生）”,
+sowMonth:7, sowDay:1,
+harvestOffset:70,
+tasks:[
+{ name:“定植”,  type:“播種・定植”, offset:0,  dur:5,  memo:“晩生タイプ・秋収穫向け” },
+{ name:“追肥”,  type:“追肥・施肥”, offset:21, dur:3,  memo:“定植3週後” },
+{ name:“防除”,  type:“防除・農薬”, offset:30, dur:5,  memo:“アオムシ・コナガ” },
+{ name:“収穫”,  type:“収穫”,       offset:70, dur:35, memo:“10月まで収穫継続” },
+]
+},
+],
+“長ネギ”: [
+{
+id:“naganegi_std”, name:“標準作型”,
+sowMonth:5, sowDay:15,
+harvestOffset:155,
+tasks:[
+{ name:“定植”,         type:“播種・定植”,  offset:0,   dur:7,  memo:“畝幅75cm” },
+{ name:“追肥・土寄せ①”,type:“土寄せ・管理”,offset:45, dur:5,  memo:“1回目土寄せ” },
+{ name:“防除”,         type:“防除・農薬”,  offset:60,  dur:10, memo:“べと病・さび病” },
+{ name:“追肥・土寄せ②”,type:“土寄せ・管理”,offset:90, dur:5,  memo:“2回目土寄せ” },
+{ name:“収穫”,         type:“収穫”,        offset:155, dur:30, memo:“葉先が枯れてきたら適期” },
+]
+},
+],
+“カスタム”: [
+{
+id:“custom”, name:“カスタム（手入力）”,
+sowMonth:5, sowDay:1,
+harvestOffset:90,
+tasks:[
+{ name:“播種・定植”, type:“播種・定植”, offset:0,  dur:3, memo:”” },
+{ name:“収穫”,       type:“収穫”,       offset:90, dur:7, memo:”” },
+]
+}
+],
+};
+
+// ===== 初期データ生成 =====
+let _nextId = 100;
+const nid = () => ++_nextId;
+
+function buildEntry(cropKey, varietyId, sowDateOverride) {
+const varieties = VARIETY_PRESETS[cropKey] || [];
+const variety = varieties.find(v=>v.id===varietyId) || varieties[0];
+if (!variety) return null;
+const sowDate = sowDateOverride || makeDate(variety.sowMonth, variety.sowDay);
+return {
+id: nid(),
+cropKey,
+varietyId: variety.id,
+varietyName: variety.name,
+sowDate,
+harvestOffset: variety.harvestOffset,
+taskOverrides: {}, // taskName → offsetDays（実績値上書き）
+tasks: variety.tasks.map(t => ({…t, id: nid()})),
+};
+}
+
+const DEFAULT_ENTRIES = [
+buildEntry(“秋まき小麦”, “kitahonam”,    makeDate(9,15,2025)),
+buildEntry(“大豆”,       “toyomusume”,   makeDate(5,20)),
+buildEntry(“ブロッコリー”,“broc_standard”,makeDate(6,20)),
+buildEntry(“長ネギ”,     “naganegi_std”, makeDate(5,15)),
+];
+
+// ===== ガントチャート =====
+function GanttChart({ entries, viewMode, onTaskClick }) {
+const DAY_PX  = viewMode===“day” ? 3 : viewMode===“week” ? 14 : 38;
+const LABEL_W = 100;
+const ROW_H   = 44;
+const HEAD_H  = 40;
+
+const months = [“1”,“2”,“3”,“4”,“5”,“6”,“7”,“8”,“9”,“10”,“11”,“12”];
+
+// 通算日→x座標
+const dayToX = (date, refYear=YEAR) => {
+const base = new Date(refYear, 0, 1);
+const diff = Math.round((date - base) / 86400000);
+return diff * DAY_PX;
+};
+
+const totalWidth = TOTAL_DAYS * DAY_PX;
+
+return (
+<div style={{display:“flex”, userSelect:“none”}}>
+{/* 固定ラベル列 */}
+<div style={{flexShrink:0, width:LABEL_W}}>
+<div style={{height:HEAD_H, borderBottom:“2px solid #2d5a27”, background:”#f0f8ec”}} />
+{entries.map(entry=>(
+<div key={entry.id} style={{height:ROW_H, display:“flex”, alignItems:“center”,
+borderBottom:“1px solid #e8f0e4”, padding:“0 8px 0 4px”}}>
+<div style={{width:8,height:8,borderRadius:2,background:TASK_COLORS[“播種・定植”].bg,marginRight:5,flexShrink:0}} />
+<span style={{fontSize:11,color:”#1a3a17”,fontWeight:“bold”,
+overflow:“hidden”,textOverflow:“ellipsis”,whiteSpace:“nowrap”,lineHeight:1.2}}>
+{entry.cropKey}<br/>
+<span style={{fontWeight:“normal”,color:”#888”,fontSize:10}}>{entry.varietyName}</span>
+</span>
+</div>
+))}
+</div>
+
+```
+  {/* スクロールエリア */}
+  <div className="scroll-x" style={{flex:1}}>
+    <div style={{width:totalWidth, position:"relative"}}>
+      {/* 月ヘッダー */}
+      <div style={{display:"flex", height:HEAD_H, borderBottom:"2px solid #2d5a27",
+        background:"#f0f8ec", position:"sticky", top:0, zIndex:10}}>
+        {MONTH_DAYS.map((days,mi)=>(
+          <div key={mi} style={{width:days*DAY_PX, flexShrink:0,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:viewMode==="day"?10:12, fontWeight:"bold", color:"#2d5a27",
+            borderRight:"1px solid #c8e8c0"}}>
+            {months[mi]}月
+          </div>
+        ))}
+      </div>
+
+      {/* 行 */}
+      {entries.map((entry,ri)=>{
+        const sowX = dayToX(entry.sowDate);
+        return (
+          <div key={entry.id} style={{height:ROW_H, position:"relative",
+            borderBottom:"1px solid #e8f0e4", background:ri%2===0?"#fff":"#fafdf8"}}>
+            {/* 月グリッド */}
+            {MONTH_OFFSET.map((off,mi)=>(
+              <div key={mi} style={{position:"absolute",left:off*DAY_PX,top:0,
+                width:MONTH_DAYS[mi]*DAY_PX, height:"100%",
+                borderRight:"1px solid #e8f0e4", pointerEvents:"none"}} />
+            ))}
+
+            {/* タスクバー */}
+            {entry.tasks.map(task=>{
+              const taskStart = addDays(entry.sowDate, task.offset);
+              const taskEnd   = addDays(taskStart, task.dur - 1);
+              const x = dayToX(taskStart);
+              const w = Math.max(task.dur * DAY_PX, 6);
+              const col = TASK_COLORS[task.type] || TASK_COLORS["その他"];
+              const isOverride = entry.taskOverrides[task.name] !== undefined;
+              return (
+                <div key={task.id}
+                  onClick={()=>onTaskClick(task, entry, taskStart, taskEnd)}
+                  style={{position:"absolute", left:x, top:6, height:ROW_H-12,
+                    width:w, background:col.bg, borderRadius:4, cursor:"pointer",
+                    display:"flex",alignItems:"center",overflow:"hidden",
+                    boxShadow: isOverride?"0 0 0 2px #fff,0 0 0 3px #ffd700":"0 1px 3px rgba(0,0,0,0.2)",
+                    zIndex:2}}>
+                  <span style={{color:col.text,fontSize:9,fontWeight:"bold",
+                    padding:"0 3px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                    {task.name}
+                  </span>
+                </div>
+              );
+            })}
+
+            {/* 播種日マーカー */}
+            <div style={{position:"absolute",left:sowX,top:0,width:2,height:"100%",
+              background:"rgba(45,90,39,0.4)",zIndex:1,pointerEvents:"none"}} />
+          </div>
+        );
+      })}
+    </div>
+  </div>
+</div>
+```
+
+);
+}
+
+// ===== タスク詳細ポップアップ =====
+function TaskPopup({ task, entry, taskStart, taskEnd, onClose, onEditOffset }) {
+const col = TASK_COLORS[task.type] || TASK_COLORS[“その他”];
+const isOverride = entry.taskOverrides[task.name] !== undefined;
+return (
+<div onClick={onClose} style={{position:“fixed”,inset:0,background:“rgba(0,0,0,0.5)”,
+display:“flex”,alignItems:“flex-end”,zIndex:1000}}>
+<div onClick={e=>e.stopPropagation()}
+style={{background:”#fff”,borderRadius:“20px 20px 0 0”,padding:24,width:“100%”,maxWidth:480,margin:“0 auto”}}>
+<div style={{display:“flex”,justifyContent:“space-between”,alignItems:“flex-start”,marginBottom:16}}>
+<div>
+<span style={{display:“inline-block”,padding:“3px 10px”,borderRadius:20,marginBottom:8,
+background:col.bg,color:col.text,fontSize:12,fontWeight:“bold”}}>{task.type}</span>
+<div style={{fontSize:20,fontWeight:“bold”,color:”#1a3a17”}}>{task.name}</div>
+<div style={{fontSize:13,color:”#888”}}>{entry.cropKey}・{entry.varietyName}</div>
+</div>
+<button onClick={onClose} style={{background:“none”,border:“none”,fontSize:24,color:”#aaa”,cursor:“pointer”}}>×</button>
+</div>
+
+```
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+      <div style={{background:"#f2f7f1",borderRadius:10,padding:12}}>
+        <div style={{fontSize:11,color:"#888",marginBottom:4}}>開始日</div>
+        <div style={{fontSize:16,fontWeight:"bold",color:"#1a3a17"}}>{fmtDateFull(taskStart)}</div>
+      </div>
+      <div style={{background:"#f2f7f1",borderRadius:10,padding:12}}>
+        <div style={{fontSize:11,color:"#888",marginBottom:4}}>終了日</div>
+        <div style={{fontSize:16,fontWeight:"bold",color:"#1a3a17"}}>{fmtDateFull(taskEnd)}</div>
+      </div>
+    </div>
+
+    <div style={{background:"#f2f7f1",borderRadius:10,padding:12,marginBottom:12}}>
+      <div style={{fontSize:11,color:"#888",marginBottom:4}}>播種/定植からの日数</div>
+      <div style={{fontSize:14,color:"#1a3a17"}}>
+        {task.offset}日後（プリセット）
+        {isOverride && <span style={{color:"#c8a000",marginLeft:8}}>★実績値で上書き中</span>}
+      </div>
+    </div>
+
+    {task.memo && (
+      <div style={{background:"#fffbea",borderRadius:10,padding:12,marginBottom:16,
+        border:"1px solid #e8d870"}}>
+        <div style={{fontSize:12,color:"#888",marginBottom:4}}>メモ</div>
+        <div style={{fontSize:14,color:"#444",lineHeight:1.6}}>{task.memo}</div>
+      </div>
+    )}
+
+    <button onClick={onEditOffset}
+      style={{width:"100%",padding:12,background:"#2d5a27",color:"#fff",border:"none",
+        borderRadius:10,fontSize:15,fontWeight:"bold",cursor:"pointer"}}>
+      ✏️ 実績日を入力して上書き
+    </button>
+  </div>
+</div>
+```
+
+);
+}
+
+// ===== 実績日入力モーダル =====
+function OverrideModal({ task, entry, taskStart, onSave, onClose }) {
+const [actualDate, setActualDate] = useState(toInputDate(taskStart));
+const parsed = fromInputDate(actualDate);
+const newOffset = parsed ? Math.round((parsed - entry.sowDate) / 86400000) : task.offset;
+return (
+<div onClick={onClose} style={{position:“fixed”,inset:0,background:“rgba(0,0,0,0.5)”,
+display:“flex”,alignItems:“flex-end”,zIndex:1001}}>
+<div onClick={e=>e.stopPropagation()}
+style={{background:”#fff”,borderRadius:“20px 20px 0 0”,padding:24,width:“100%”,maxWidth:480,margin:“0 auto”}}>
+<div style={{fontSize:18,fontWeight:“bold”,color:”#1a3a17”,marginBottom:4}}>実績日を入力</div>
+<div style={{fontSize:13,color:”#888”,marginBottom:20}}>{entry.cropKey}・{task.name}</div>
+
+```
+    <div style={{marginBottom:12}}>
+      <div style={{fontSize:12,color:"#888",marginBottom:6}}>実際に作業した日（開始日）</div>
+      <input type="date" value={actualDate} onChange={e=>setActualDate(e.target.value)}
+        style={{width:"100%",padding:"10px 12px",border:"1px solid #c8e0c0",borderRadius:10,
+          fontSize:16,background:"#f8fdf7",color:"#1a3a17",boxSizing:"border-box"}} />
+    </div>
+
+    {parsed && (
+      <div style={{background:"#f0f8ec",borderRadius:10,padding:12,marginBottom:20,
+        border:"1px solid #b0d8a0"}}>
+        <div style={{fontSize:12,color:"#2d5a27"}}>
+          播種日から <strong>{newOffset}日後</strong>（プリセット: {task.offset}日後）
+        </div>
+        <div style={{fontSize:12,color:"#888",marginTop:4}}>
+          差分: {newOffset - task.offset > 0 ? "+" : ""}{newOffset - task.offset}日
+        </div>
+      </div>
+    )}
+
+    <button onClick={()=>{ if(parsed) onSave(task.name, newOffset, parsed); }}
+      style={{width:"100%",padding:12,background:"#2d5a27",color:"#fff",border:"none",
+        borderRadius:10,fontSize:15,fontWeight:"bold",cursor:"pointer",marginBottom:8}}>
+      この日付で保存（実績値として記録）
+    </button>
+    <button onClick={onClose}
+      style={{width:"100%",padding:10,background:"none",color:"#888",
+        border:"1px solid #ddd",borderRadius:10,fontSize:14,cursor:"pointer"}}>
+      キャンセル
+    </button>
+  </div>
+</div>
+```
+
+);
+}
+
+// ===== 作付け登録モーダル =====
+function AddEntryModal({ onSave, onClose }) {
+const [cropKey, setCropKey] = useState(“秋まき小麦”);
+const [varietyId, setVarietyId] = useState(””);
+const [sowDate, setSowDate] = useState(””);
+
+const varieties = VARIETY_PRESETS[cropKey] || [];
+const selVariety = varieties.find(v=>v.id===varietyId) || varieties[0];
+
+return (
+<div onClick={onClose} style={{position:“fixed”,inset:0,background:“rgba(0,0,0,0.5)”,
+display:“flex”,alignItems:“flex-end”,zIndex:1001}}>
+<div onClick={e=>e.stopPropagation()}
+style={{background:”#fff”,borderRadius:“20px 20px 0 0”,padding:24,width:“100%”,maxWidth:480,margin:“0 auto”}}>
+<div style={{fontSize:18,fontWeight:“bold”,color:”#1a3a17”,marginBottom:20}}>作付けを登録</div>
+
+```
+    <div style={{marginBottom:12}}>
+      <div style={{fontSize:12,color:"#888",marginBottom:6}}>作物</div>
+      <select value={cropKey} onChange={e=>{setCropKey(e.target.value);setVarietyId("");}}
+        style={selStyle}>
+        {Object.keys(VARIETY_PRESETS).map(k=><option key={k}>{k}</option>)}
+      </select>
+    </div>
+
+    <div style={{marginBottom:12}}>
+      <div style={{fontSize:12,color:"#888",marginBottom:6}}>品種</div>
+      <select value={varietyId||selVariety?.id||""} onChange={e=>setVarietyId(e.target.value)}
+        style={selStyle}>
+        {varieties.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+      </select>
+    </div>
+
+    <div style={{marginBottom:8}}>
+      <div style={{fontSize:12,color:"#888",marginBottom:6}}>播種・定植日</div>
+      <input type="date" value={sowDate}
+        onChange={e=>setSowDate(e.target.value)}
+        style={{...selStyle,fontSize:16}} />
+    </div>
+
+    {selVariety && (
+      <div style={{background:"#f0f8ec",borderRadius:10,padding:12,marginBottom:20,
+        border:"1px solid #b0d8a0",fontSize:12,color:"#2d5a27"}}>
+        目安: 播種{selVariety.sowMonth}/{selVariety.sowDay} →
+        収穫 約{selVariety.harvestOffset}日後
+        （{(() => {
+          const d = addDays(
+            sowDate ? fromInputDate(sowDate) : makeDate(selVariety.sowMonth, selVariety.sowDay),
+            selVariety.harvestOffset
+          );
+          return fmtDate(d);
+        })()}頃）
+      </div>
+    )}
+
+    <button onClick={()=>{
+      const vid = varietyId || selVariety?.id;
+      const sd = sowDate ? fromInputDate(sowDate) : null;
+      const entry = buildEntry(cropKey, vid, sd);
+      if(entry) onSave(entry);
+    }}
+      style={{width:"100%",padding:12,background:"#2d5a27",color:"#fff",border:"none",
+        borderRadius:10,fontSize:15,fontWeight:"bold",cursor:"pointer",marginBottom:8}}>
+      登録する
+    </button>
+    <button onClick={onClose}
+      style={{width:"100%",padding:10,background:"none",color:"#888",
+        border:"1px solid #ddd",borderRadius:10,fontSize:14,cursor:"pointer"}}>
+      キャンセル
+    </button>
+  </div>
+</div>
+```
+
+);
+}
+
+const selStyle = {
+width:“100%”,padding:“10px 12px”,border:“1px solid #c8e0c0”,borderRadius:10,
+fontSize:14,background:”#f8fdf7”,color:”#1a3a17”,boxSizing:“border-box”,
+};
+
+// ===== メインアプリ =====
+function App() {
+const [entries, setEntries] = useState(DEFAULT_ENTRIES);
+const [viewMode, setViewMode] = useState(“month”); // day | week | month
+const [popup, setPopup] = useState(null); // {task, entry, taskStart, taskEnd}
+const [overrideModal, setOverrideModal] = useState(null);
+const [addModal, setAddModal] = useState(false);
+const [activeTab, setActiveTab] = useState(“chart”); // chart | list
+
+const saveOverride = (entryId, taskName, newOffset) => {
+setEntries(prev => prev.map(e => {
+if (e.id !== entryId) return e;
+const newOverrides = {…e.taskOverrides, [taskName]: newOffset};
+const newTasks = e.tasks.map(t =>
+t.name === taskName ? {…t, offset: newOffset} : t
+);
+return {…e, taskOverrides: newOverrides, tasks: newTasks};
+}));
+};
+
+const deleteEntry = (id) => setEntries(prev => prev.filter(e => e.id !== id));
+
+const today = new Date();
+
+return (
+<div style={{fontFamily:”‘Hiragino Kaku Gothic ProN’,‘Noto Sans JP’,sans-serif”,
+background:”#f2f7f1”,minHeight:“100vh”,maxWidth:480,margin:“0 auto”}}>
+
+```
+  {/* ヘッダー */}
+  <div style={{background:"linear-gradient(135deg,#1a3a17 0%,#2d5a27 60%,#3d7a35 100%)",
+    padding:"20px 16px 14px",color:"#fff"}}>
+    <div style={{fontSize:11,letterSpacing:2,opacity:0.7,marginBottom:4}}>農業経営システム</div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <div style={{fontSize:21,fontWeight:"bold"}}>📅 作業スケジュール</div>
+    </div>
+    <div style={{background:"rgba(255,255,255,0.12)",borderRadius:12,padding:12,
+      display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:10,opacity:0.7}}>登録作物</div>
+        <div style={{fontSize:20,fontWeight:"bold"}}>{entries.length}</div>
+      </div>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:10,opacity:0.7}}>今日</div>
+        <div style={{fontSize:20,fontWeight:"bold"}}>{today.getMonth()+1}/{today.getDate()}</div>
+      </div>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:10,opacity:0.7}}>次の収穫</div>
+        <div style={{fontSize:14,fontWeight:"bold"}}>
+          {(() => {
+            const harvests = entries.map(e => {
+              const t = e.tasks.find(t=>t.type==="収穫");
+              if(!t) return null;
+              return addDays(e.sowDate, t.offset);
+            }).filter(Boolean).filter(d=>d>=today).sort((a,b)=>a-b);
+            return harvests.length>0 ? fmtDate(harvests[0]) : "—";
+          })()}
+        </div>
+      </div>
+    </div>
+
+    {/* タブ */}
+    <div style={{display:"flex",gap:4,marginBottom:8}}>
+      {[["chart","📊 ガント"],["list","📋 一覧"]].map(([id,label])=>(
+        <button key={id} onClick={()=>setActiveTab(id)}
+          style={{flex:1,padding:"6px 0",borderRadius:20,border:"none",cursor:"pointer",
+            fontSize:12,fontWeight:"bold",
+            background:activeTab===id?"#fff":"rgba(255,255,255,0.2)",
+            color:activeTab===id?"#2d5a27":"#fff"}}>
+          {label}
+        </button>
+      ))}
+    </div>
+
+    {/* 表示モード（チャートのみ） */}
+    {activeTab==="chart" && (
+      <div style={{display:"flex",gap:3}}>
+        <span style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginRight:4,alignSelf:"center"}}>表示</span>
+        {[["month","月"],["week","週"],["day","日"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setViewMode(id)}
+            style={{padding:"3px 10px",borderRadius:20,border:"none",cursor:"pointer",
+              fontSize:11,fontWeight:"bold",
+              background:viewMode===id?"#fff":"rgba(255,255,255,0.2)",
+              color:viewMode===id?"#2d5a27":"#fff"}}>
+            {label}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+
+  {/* ガントチャート */}
+  {activeTab==="chart" && (
+    <div style={{background:"#fff",marginBottom:12,
+      boxShadow:"0 2px 8px rgba(0,0,0,0.06)",overflowX:"hidden"}}>
+      <GanttChart entries={entries} viewMode={viewMode}
+        onTaskClick={(task,entry,start,end)=>setPopup({task,entry,taskStart:start,taskEnd:end})} />
+    </div>
+  )}
+
+  {/* 作物一覧 */}
+  {activeTab==="list" && (
+    <div style={{padding:"12px 12px 0"}}>
+      {entries.map(entry=>{
+        const harvestTask = entry.tasks.find(t=>t.type==="収穫");
+        const harvestDate = harvestTask ? addDays(entry.sowDate, harvestTask.offset) : null;
+        const overrideCount = Object.keys(entry.taskOverrides).length;
+        return (
+          <div key={entry.id} style={{background:"#fff",borderRadius:12,marginBottom:10,
+            boxShadow:"0 2px 8px rgba(45,90,39,0.06)",border:"1px solid #e0eede",overflow:"hidden"}}>
+            <div style={{padding:"12px 14px",borderBottom:"1px solid #f0f4ee"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div>
+                  <div style={{fontWeight:"bold",fontSize:15,color:"#1a3a17"}}>{entry.cropKey}</div>
+                  <div style={{fontSize:12,color:"#888",marginTop:2}}>{entry.varietyName}</div>
+                </div>
+                <button onClick={()=>deleteEntry(entry.id)}
+                  style={{background:"none",border:"none",color:"#ccc",fontSize:18,cursor:"pointer"}}>×</button>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
+                <div style={{background:"#f0f8ec",borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontSize:10,color:"#888"}}>播種・定植日</div>
+                  <div style={{fontSize:14,fontWeight:"bold",color:"#2d5a27"}}>{fmtDateFull(entry.sowDate)}</div>
+                </div>
+                <div style={{background:"#fff0f0",borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontSize:10,color:"#888"}}>収穫予定日</div>
+                  <div style={{fontSize:14,fontWeight:"bold",color:"#c03030"}}>
+                    {harvestDate ? fmtDateFull(harvestDate) : "未設定"}
+                  </div>
+                </div>
+              </div>
+              {overrideCount > 0 && (
+                <div style={{marginTop:8,fontSize:11,color:"#b08000"}}>
+                  ★ 実績値で上書き中: {overrideCount}工程
+                </div>
+              )}
+            </div>
+
+            {/* 工程リスト */}
+            {entry.tasks.map(task=>{
+              const tStart = addDays(entry.sowDate, task.offset);
+              const col = TASK_COLORS[task.type]||TASK_COLORS["その他"];
+              const isOverride = entry.taskOverrides[task.name]!==undefined;
+              return (
+                <div key={task.id}
+                  onClick={()=>{
+                    const tEnd = addDays(tStart, task.dur-1);
+                    setPopup({task,entry,taskStart:tStart,taskEnd:tEnd});
+                  }}
+                  style={{display:"flex",alignItems:"center",padding:"8px 14px",
+                    cursor:"pointer",borderBottom:"1px solid #f8f8f8",gap:8}}>
+                  <div style={{width:8,height:8,borderRadius:4,background:col.bg,flexShrink:0}} />
+                  <div style={{flex:1}}>
+                    <span style={{fontSize:13,color:"#1a3a17"}}>{task.name}</span>
+                    {isOverride && <span style={{fontSize:10,color:"#b08000",marginLeft:4}}>★実績</span>}
+                    <div style={{fontSize:11,color:"#888"}}>
+                      {fmtDate(tStart)} 〜 {fmtDate(addDays(tStart,task.dur-1))}
+                      <span style={{marginLeft:6,color:"#bbb"}}>（+{task.offset}日）</span>
+                    </div>
+                  </div>
+                  <span style={{fontSize:10,color:"#aaa"}}>▶</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  )}
+
+  {/* 追加ボタン */}
+  <div style={{padding:"0 12px 24px"}}>
+    <button onClick={()=>setAddModal(true)}
+      style={{width:"100%",padding:12,background:"#2d5a27",color:"#fff",border:"none",
+        borderRadius:12,fontSize:14,fontWeight:"bold",cursor:"pointer"}}>
+      ＋ 作付けを登録
+    </button>
+
+    {/* 凡例 */}
+    <div style={{marginTop:12,background:"#fff",borderRadius:12,padding:14,
+      boxShadow:"0 2px 8px rgba(0,0,0,0.06)",border:"1px solid #e0eede"}}>
+      <div style={{fontSize:12,fontWeight:"bold",color:"#2d5a27",marginBottom:8}}>工程の種別</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+        {TASK_TYPES.map(t=>{
+          const c=TASK_COLORS[t];
+          return <span key={t} style={{padding:"3px 10px",borderRadius:20,fontSize:11,
+            fontWeight:"bold",background:c.bg,color:c.text}}>{t}</span>;
+        })}
+      </div>
+      <div style={{fontSize:11,color:"#888",marginTop:10,lineHeight:1.7}}>
+        ★ 金色の枠線 = 実績値で上書き中の工程<br/>
+        縦線 = 播種・定植日のマーカー
+      </div>
+    </div>
+  </div>
+
+  {/* ポップアップ */}
+  {popup && (
+    <TaskPopup {...popup}
+      onClose={()=>setPopup(null)}
+      onEditOffset={()=>{ setOverrideModal(popup); setPopup(null); }} />
+  )}
+
+  {/* 実績日入力 */}
+  {overrideModal && (
+    <OverrideModal {...overrideModal}
+      onSave={(taskName, newOffset) => {
+        saveOverride(overrideModal.entry.id, taskName, newOffset);
+        setOverrideModal(null);
+      }}
+      onClose={()=>setOverrideModal(null)} />
+  )}
+
+  {/* 作付け追加 */}
+  {addModal && (
+    <AddEntryModal
+      onSave={(entry)=>{ setEntries([...entries,entry]); setAddModal(false); }}
+      onClose={()=>setAddModal(false)} />
+  )}
+</div>
+```
+
+);
+}
+
+ReactDOM.createRoot(document.getElementById(“root”)).render(<App />);
+</script>
+
+</body>
+</html>
